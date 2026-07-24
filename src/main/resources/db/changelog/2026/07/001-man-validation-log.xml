@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- man_validation_log: MRV single writer (R-04). One durable verdict row per
+         instruction record keyed on the FULL business identity (arrival_id, sequence):
+         the UNIQUE lets the guarded INSERT ... ON CONFLICT DO NOTHING make a resume a
+         zero-duplicate no-op (never UPSERT on the PK; CRDB resolves UPSERT on PK only,
+         persistence.md). outcome carries the platform-model MandateOutcome name (R-21:
+         code values, never enum ordinals); detail holds a short human diagnosis.
+         MRV reads the mrr-owned spine (mandate_request_entry) and account/account_type
+         from the shared dcre_man core (000-man-core-bootstrap.xml); it OWNS this table
+         and the spine_state VALIDATED|REJECTED transition (ruling note 2). -->
+    <changeSet id="mrv-001-man-validation-log" author="dcre">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="man_validation_log"/></not>
+        </preConditions>
+        <createTable tableName="man_validation_log">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="arrival_id" type="UUID"><constraints nullable="false"/></column>
+            <column name="sequence" type="INT"><constraints nullable="false"/></column>
+            <column name="outcome" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="detail" type="VARCHAR(256)"/>
+        </createTable>
+        <addUniqueConstraint tableName="man_validation_log" columnNames="arrival_id, sequence"
+                             constraintName="uq_man_validation_arrival_sequence"/>
+    </changeSet>
+
+</databaseChangeLog>
