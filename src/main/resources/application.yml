@@ -26,4 +26,11 @@ dcre:
     # so an unknown mode value fails startup (fail closed).
     acceptance-mode:
       default: ALL_OR_NOTHING
-      clients: {}
+      # Per-client override map: KEY OMITTED on purpose. Spring Boot's
+      # OriginTrackedYamlLoader loads BOTH an empty flow map `clients: {}` AND a
+      # bare null `clients:` as the String "" (no String->Map converter -> context
+      # fails to start on the first live pod, T16). With the key absent the field's
+      # HashMap default stands. Add overrides by supplying real entries (tokens are
+      # UPPERCASE, bracket them to survive relaxed binding):
+      #   clients:
+      #     "[FNBRF01]": PARTIAL
