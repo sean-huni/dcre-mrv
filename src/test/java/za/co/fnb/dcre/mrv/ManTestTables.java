@@ -5,13 +5,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.UUID;
 
 /**
- * BDD seeding helpers. account / account_type / mandate come from MRV's own
- * Liquibase core bootstrap (000-man-core-bootstrap.xml), so this helper only
- * stands up the MRR-owned spine tables (mandate_request_header /
- * mandate_request_entry, NOT in MRV's changelog, exactly as CtvTestTables stands
- * up the crr-owned tx spine) with the subset of columns the MRV read models map,
- * and seeds account + spine + projection rows. spine_state defaults to RECEIVED,
- * the state MRR leaves and MRV transitions.
+ * BDD seeding helpers. account / account_type come from MRV's own Liquibase core
+ * bootstrap (000-man-core-bootstrap.xml), so this helper only stands up the
+ * MRR-owned spine tables (mandate_request_header / mandate_request_entry, NOT in
+ * MRV's changelog, exactly as CtvTestTables stands up the crr-owned tx spine) and
+ * seeds account + spine rows. spine_state defaults to RECEIVED, the state MRR
+ * leaves and MRV transitions. The derived view stack MRV's 1:1-live admission
+ * check reads is {@link ManEffectiveStatusTables}.
  */
 public final class ManTestTables {
 
@@ -42,7 +42,12 @@ public final class ManTestTables {
                     mandate_ref VARCHAR(35) NOT NULL,
                     contract_ref VARCHAR(14),
                     debtor_account VARCHAR(32),
+                    creditor_account VARCHAR(32),
                     currency VARCHAR(3) NOT NULL,
+                    max_collection_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+                    start_date VARCHAR(8),
+                    expiry_date VARCHAR(8),
+                    mndt_req_id VARCHAR(35) UNIQUE,
                     dup_in_file BOOLEAN NOT NULL DEFAULT false,
                     spine_state VARCHAR(16) NOT NULL DEFAULT 'RECEIVED',
                     UNIQUE (arrival_id, sequence))""");
@@ -58,11 +63,19 @@ public final class ManTestTables {
     public static void insertEntry(final JdbcTemplate jdbc, final UUID arrival, final int sequence,
                                    final String action, final String ref, final String contract,
                                    final String debtorAccount, final boolean dupInFile) {
+        insertEntry(jdbc, arrival, sequence, action, ref, contract, debtorAccount, "7300000001", dupInFile);
+    }
+
+    /** As above, naming the creditor account too: the R-23/A-29 fallback key when contract_ref is blank. */
+    public static void insertEntry(final JdbcTemplate jdbc, final UUID arrival, final int sequence,
+                                   final String action, final String ref, final String contract,
+                                   final String debtorAccount, final String creditorAccount,
+                                   final boolean dupInFile) {
         jdbc.update("""
                 INSERT INTO mandate_request_entry (arrival_id, sequence, record_type, action_code,
-                    mandate_ref, contract_ref, debtor_account, currency, dup_in_file)
-                VALUES (?,?, 'MD', ?,?,?,?, 'ZAR', ?)""",
-                arrival, sequence, action, ref, contract, debtorAccount, dupInFile);
+                    mandate_ref, contract_ref, debtor_account, creditor_account, currency, dup_in_file)
+                VALUES (?,?, 'MD', ?,?,?,?,?, 'ZAR', ?)""",
+                arrival, sequence, action, ref, contract, debtorAccount, creditorAccount, dupInFile);
     }
 
     /** Prior-arrival spine row already at a chosen state (for the CREATE-absence / AMEND-known checks). */
@@ -80,12 +93,5 @@ public final class ManTestTables {
                 INSERT INTO account (account_number, account_type_code, status)
                 VALUES (?,?, 'ACTIVE')
                 ON CONFLICT (account_number) DO NOTHING""", number, typeCode);
-    }
-
-    public static void seedMandateProjection(final JdbcTemplate jdbc, final String ref, final String contract,
-                                             final String creditorAccount, final String state) {
-        jdbc.update("""
-                INSERT INTO mandate (mandate_ref, contract_ref, creditor_account, state)
-                VALUES (?,?,?,?)""", ref, contract, creditorAccount, state);
     }
 }

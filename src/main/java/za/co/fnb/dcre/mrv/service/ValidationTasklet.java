@@ -28,7 +28,7 @@ public class ValidationTasklet implements Tasklet {
                 (String) chunkContext.getStepContext().getJobParameters().get("arrival.id"));
         final var context = chunkContext.getStepContext().getStepExecution()
                 .getJobExecution().getExecutionContext();
-        service.validate(arrivalId, context.getString("asOfTimestamp"));
+        service.validate(arrivalId, context.getString("asOfTimestamp"), context.getString("clientToken"));
         return RepeatStatus.FINISHED;
     }
 }

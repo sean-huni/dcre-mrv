@@ -21,6 +21,7 @@ public class ManRequestEntryView extends BaseEntity {
     private String mandateRef;
     private String contractRef;
     private String debtorAccount;
+    private String creditorAccount;
     private String currency;
     private boolean dupInFile;
     private String spineState;
@@ -51,6 +52,10 @@ public class ManRequestEntryView extends BaseEntity {
 
     public String getDebtorAccount() {
         return debtorAccount;
+    }
+
+    public String getCreditorAccount() {
+        return creditorAccount;
     }
 
     public String getCurrency() {

@@ -28,7 +28,16 @@ final class ManVerdictDetail {
                     .formatted(entry.contractRef());
             case FAIL_AMEND_UNKNOWN_REF -> "AMEND targets unknown mandate_ref '%s'".formatted(entry.mandateRef());
             case FAIL_CANCEL_UNKNOWN_REF -> "CANCEL targets unknown mandate_ref '%s'".formatted(entry.mandateRef());
+            case CONTRACT_HAS_LIVE_MANDATE -> "contract '%s' already carries a live mandate"
+                    .formatted(contractIdentity(entry));
             default -> outcome.name();
         };
+    }
+
+    /** Names the key the invariant actually used, so an operator can see WHICH contract blocked. */
+    private static String contractIdentity(final Entry entry) {
+        return entry.contractRef() == null || entry.contractRef().isBlank()
+                ? "%s/%s".formatted(entry.debtorAccount(), entry.creditorAccount())
+                : entry.contractRef().strip();
     }
 }

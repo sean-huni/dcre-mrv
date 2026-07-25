@@ -15,6 +15,7 @@ import za.co.fnb.dcre.mrv.service.VerdictChain.Entry;
 import za.co.fnb.dcre.platform.model.MandateOutcome;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,14 +43,17 @@ public class ManValidationService {
     private final ManRequestEntryRepo entries;
     private final ManReferenceSnapshotDao referenceSnapshot;
     private final ManValidationLogBatchDao verdictBatch;
+    private final LiveMandateGuard liveMandates;
 
     public ManValidationService(final ManRequestHeaderRepo headers, final ManRequestEntryRepo entries,
                                 final ManReferenceSnapshotDao referenceSnapshot,
-                                final ManValidationLogBatchDao verdictBatch) {
+                                final ManValidationLogBatchDao verdictBatch,
+                                final LiveMandateGuard liveMandates) {
         this.headers = headers;
         this.entries = entries;
         this.referenceSnapshot = referenceSnapshot;
         this.verdictBatch = verdictBatch;
+        this.liveMandates = liveMandates;
     }
 
     /** Tier 1: client identity (for the R-41 acceptance mode) + F51 snapshot capture. */
@@ -69,11 +73,13 @@ public class ManValidationService {
      * whole arrival each run is idempotent (the log DAO is first-write-wins on the
      * business identity), so a resume never duplicates a verdict.
      */
-    public void validate(final UUID arrivalId, final String asOfTimestamp) {
+    public void validate(final UUID arrivalId, final String asOfTimestamp, final String clientToken) {
         final List<ManRequestEntryView> rows = entries.findByArrivalIdOrderBySequence(arrivalId);
         if (rows.isEmpty()) {
             return;
         }
+        final Map<String, String> admitted = new HashMap<>();
+        final var liveTwins = liveMandates.forArrival(asOfTimestamp, clientToken, admitted);
         final Set<String> debtorAccounts = rows.stream()
                 .map(ManRequestEntryView::getDebtorAccount).collect(Collectors.toSet());
         final Set<String> refs = rows.stream()
@@ -85,10 +91,14 @@ public class ManValidationService {
         final List<ManValidationLogEntity> batch = new ArrayList<>(rows.size());
         for (final ManRequestEntryView row : rows) {
             final Entry entry = new Entry(row.getSequence(), row.getRecordType(), row.getActionCode(),
-                    row.getMandateRef(), row.getContractRef(), row.getDebtorAccount(), row.getCurrency(),
-                    row.getDupInFile());
-            final MandateOutcome outcome = VerdictChain.classify(entry, accounts, mandatesAllowed, knownRefs);
-            if (outcome != MandateOutcome.PASS) {
+                    row.getMandateRef(), row.getContractRef(), row.getDebtorAccount(),
+                    row.getCreditorAccount(), row.getCurrency(), row.getDupInFile());
+            final MandateOutcome outcome =
+                    VerdictChain.classify(entry, accounts, mandatesAllowed, knownRefs, liveTwins);
+            if (outcome == MandateOutcome.PASS) {
+                // First admitted row claims the contract, so an intra-file twin loses (R-20).
+                admitted.putIfAbsent(LiveMandateGuard.contractKey(entry), entry.mandateRef());
+            } else {
                 // R-38 exclusion visibility: WARN at decision time; man_validation_log is the durable record.
                 log.warn("excluded stage=MRV arrival={} seq={} action={} ref={} reason={}",
                         arrivalId, row.getSequence(), row.getActionCode(), row.getMandateRef(), outcome.name());
