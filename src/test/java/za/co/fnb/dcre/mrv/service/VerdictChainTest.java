@@ -3,9 +3,11 @@ package za.co.fnb.dcre.mrv.service;
 import org.junit.jupiter.api.Test;
 import za.co.fnb.dcre.mrv.service.VerdictChain.Account;
 import za.co.fnb.dcre.mrv.service.VerdictChain.Entry;
+import za.co.fnb.dcre.mrv.service.VerdictChain.LiveMandateLookup;
 import za.co.fnb.dcre.platform.model.MandateOutcome;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,13 +27,20 @@ class VerdictChainTest {
             "CHQ", true, "SAV", false, "TRN", true);
     private static final Set<String> KNOWN = Set.of("MREF-EXISTING-1");
 
+    /** No contract anywhere holds a live mandate: the admissibility stage is a no-op. */
+    private static final LiveMandateLookup NO_LIVE_TWIN = e -> Optional.empty();
+
     private static Entry entry(final String action, final String ref, final String contract,
                                final String debtor, final boolean dup) {
-        return new Entry(1, "MD", action, ref, contract, debtor, "ZAR", dup);
+        return new Entry(1, "MD", action, ref, contract, debtor, "7300000001", "ZAR", dup);
     }
 
     private static MandateOutcome classify(final Entry entry) {
-        return VerdictChain.classify(entry, ACCOUNTS, ALLOWED, KNOWN);
+        return VerdictChain.classify(entry, ACCOUNTS, ALLOWED, KNOWN, NO_LIVE_TWIN);
+    }
+
+    private static MandateOutcome classify(final Entry entry, final String liveRef) {
+        return VerdictChain.classify(entry, ACCOUNTS, ALLOWED, KNOWN, e -> Optional.of(liveRef));
     }
 
     @Test
@@ -55,7 +64,8 @@ class VerdictChainTest {
     @Test
     void blankCurrencyIsStructural() {
         assertEquals(MandateOutcome.FAIL_STRUCTURE,
-                classify(new Entry(1, "MD", "CREATE", "MREF-NEW-1", "CTR1", "6200000021", "  ", false)));
+                classify(new Entry(1, "MD", "CREATE", "MREF-NEW-1", "CTR1", "6200000021",
+                        "7300000001", "  ", false)));
     }
 
     @Test
@@ -131,5 +141,25 @@ class VerdictChainTest {
         assertEquals(MandateOutcome.FAIL_DUPLICATE_REF,
                 classify(entry("CREATE", "MREF-NEW-1", "CTR1", "6200000000", true)),
                 "in-file duplicate wins over account-not-found");
+    }
+
+    @Test
+    void aLiveMandateOnTheContractIsInadmissible() {
+        assertEquals(MandateOutcome.CONTRACT_HAS_LIVE_MANDATE,
+                classify(entry("CREATE", "MREF-NEW-1", "CTR1", "6200000021", false), "MREF-LIVE-9"));
+    }
+
+    @Test
+    void theLiveMandateBeingThisSameRefIsNotATwin() {
+        assertEquals(MandateOutcome.PASS,
+                classify(entry("AMEND", "MREF-EXISTING-1", "CTR1", "6200000021", false), "MREF-EXISTING-1"),
+                "an amendment of the live mandate itself is not a second mandate on the contract");
+    }
+
+    @Test
+    void anEarlierStageWinsOverTheAdmissibilityStage() {
+        assertEquals(MandateOutcome.FAIL_ACCOUNT_NOT_FOUND,
+                classify(entry("CREATE", "MREF-NEW-1", "CTR1", "6200000000", false), "MREF-LIVE-9"),
+                "admissibility judges an otherwise-valid instruction, so it runs last");
     }
 }

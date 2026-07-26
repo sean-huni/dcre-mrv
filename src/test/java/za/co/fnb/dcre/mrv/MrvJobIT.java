@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * VerdictChain stage is exercised end to end through the job (item reject +
  * spine_state transition), plus the R-41 rollup modes (ACCEPTED / PARTIAL /
  * BUSINESS_FILE_REJECTED under ALL_OR_NOTHING and structural override), the
- * action-specific known-ref checks (projection + prior spine), and the
+ * action-specific known-ref checks (derived status view + prior spine), and the
  * resume/idempotency guarantee (re-run = zero duplicate verdicts, spine stable).
  * FNBCC01 is the default ALL_OR_NOTHING client; FNBRF01 is mapped to PARTIAL.
  */
@@ -75,6 +75,7 @@ class MrvJobIT {
     @BeforeEach
     void seedReference() {
         ManTestTables.createSpine(jdbc);
+        ManEffectiveStatusTables.createViewStack(jdbc);
         ManTestTables.seedAccount(jdbc, "6200000021", "CHQ");
         ManTestTables.seedAccount(jdbc, "6200000099", "SAV");
     }
@@ -105,8 +106,8 @@ class MrvJobIT {
     void cleanCreateArrivalIsAllValidatedAndAccepted() throws Exception {
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBCC01", 2);
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-A", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-B", "CTR2", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-A", "CTRAA1", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-B", "CTRAA2", "6200000021", false);
 
         final JobExecution run = run(arrival, null);
         assertEquals(BatchStatus.COMPLETED, run.getStatus());
@@ -125,8 +126,8 @@ class MrvJobIT {
     void allOrNothingRejectsWholeFileAndAllRowsOnAnyFail() throws Exception {
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBCC01", 2); // default ALL_OR_NOTHING
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-C", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-D", "CTR2", "6299999999", false); // unknown acct
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-C", "CTRBB1", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-D", "CTRBB2", "6299999999", false); // unknown acct
 
         final JobExecution run = run(arrival, null);
         assertEquals("BUSINESS_FILE_REJECTED", run.getExitStatus().getExitCode());
@@ -140,8 +141,8 @@ class MrvJobIT {
     void partialModeRejectsOnlyTheFailingRow() throws Exception {
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBRF01", 2); // PARTIAL
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-E", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-F", "CTR2", "6299999999", false);
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-E", "CTRCC1", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-F", "CTRCC2", "6299999999", false);
 
         final JobExecution run = run(arrival, null);
         assertEquals("BUSINESS_PARTIAL", run.getExitStatus().getExitCode());
@@ -152,8 +153,8 @@ class MrvJobIT {
     void structuralFailRejectsWholeFileEvenUnderPartial() throws Exception {
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBRF01", 2); // PARTIAL, but structural is whole-file fatal
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-G", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "BOGUS", "MREF-H", "CTR2", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-G", "CTRDD1", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "BOGUS", "MREF-H", "CTRDD2", "6200000021", false);
 
         final JobExecution run = run(arrival, null);
         assertEquals("BUSINESS_FILE_REJECTED", run.getExitStatus().getExitCode());
@@ -165,7 +166,7 @@ class MrvJobIT {
     void disallowedAccountTypeIsItemReject() throws Exception {
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBRF01", 1);
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-I", "CTR1", "6200000099", false); // SAV
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-I", "CTREE1", "6200000099", false); // SAV
 
         run(arrival, null);
         assertEquals("FAIL_ACCOUNT_TYPE_DISALLOWED", outcome(arrival, 1));
@@ -183,13 +184,22 @@ class MrvJobIT {
         assertEquals(List.of("REJECTED"), spineStates(arrival));
     }
 
+    /**
+     * SCRUM-91: the known-ref check's first arm reads mandate_effective_status, not the
+     * deleted MSR projection. The predecessor here is REJECTED on the spine, so ONLY the
+     * derived-view arm can make its ref known: it proves that arm still resolves.
+     */
     @Test
-    void amendKnownViaProjectionPassesUnknownRejects() throws Exception {
-        ManTestTables.seedMandateProjection(jdbc, "MREF-EXIST-P", "CTRP", "6200000021", "ACCP");
+    void amendKnownViaEffectiveStatusPassesUnknownRejects() throws Exception {
+        final UUID prior = UUID.randomUUID();
+        ManEffectiveStatusTables.seedPriorRegistration(jdbc, prior, "FNBRF01", "MREF-EXIST-P", "CTRP",
+                "6200000021", "7300000001", "20991231", "MREQ-EXIST-P", "REJECTED");
+        ManEffectiveStatusTables.seedPbsr(jdbc, "MREQ-EXIST-P", "MREF-EXIST-P", "CANC", "MD07");
+
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBRF01", 2);
-        ManTestTables.insertEntry(jdbc, arrival, 1, "AMEND", "MREF-EXIST-P", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "AMEND", "MREF-UNKNOWN", "CTR2", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 1, "AMEND", "MREF-EXIST-P", "CTRP", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "AMEND", "MREF-UNKNOWN", "CTRFF2", "6200000021", false);
 
         run(arrival, null);
         assertEquals("PASS", outcome(arrival, 1));
@@ -205,8 +215,8 @@ class MrvJobIT {
 
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBRF01", 2);
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-PRIOR", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "CANCEL", "MREF-PRIOR", "CTR2", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-PRIOR", "CTRGG1", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "CANCEL", "MREF-PRIOR", "CTRGG2", "6200000021", false);
 
         run(arrival, null);
         assertEquals("FAIL_DUPLICATE_REF", outcome(arrival, 1), "CREATE collides with a prior registration");
@@ -218,8 +228,8 @@ class MrvJobIT {
     void intraFileDuplicateFlaggedRowRejects() throws Exception {
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBRF01", 2);
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-K", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-K", "CTR2", "6200000021", true); // dup_in_file
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-K", "CTRHH1", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-K", "CTRHH2", "6200000021", true); // dup_in_file
 
         run(arrival, null);
         assertEquals("PASS", outcome(arrival, 1));
@@ -231,8 +241,8 @@ class MrvJobIT {
     void reRunIsIdempotentZeroDuplicateAndSpineStable() throws Exception {
         final UUID arrival = UUID.randomUUID();
         ManTestTables.insertHeader(jdbc, arrival, "FNBCC01", 2);
-        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-R1", "CTR1", "6200000021", false);
-        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-R2", "CTR2", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 1, "CREATE", "MREF-R1", "CTRII1", "6200000021", false);
+        ManTestTables.insertEntry(jdbc, arrival, 2, "CREATE", "MREF-R2", "CTRII2", "6200000021", false);
 
         assertEquals(BatchStatus.COMPLETED, run(arrival, "1").getStatus());
         assertEquals(List.of("VALIDATED", "VALIDATED"), spineStates(arrival));
