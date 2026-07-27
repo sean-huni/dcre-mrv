@@ -110,42 +110,73 @@ public class ManReferenceSnapshotDao {
      * The live mandate already bound to {@code (client, contractRef)}, or empty when the
      * contract is free. Live is the effective state, never a row count: PDNG and ACCP are
      * in flight and SUSPENDED is a collection-failure hold that still occupies the
-     * contract, while RJCT, CANC and EXPIRED are terminal and release it. Keyed on
-     * {@code (client, contract_ref)} and filtered on {@code state} only: {@code mndt_req_id}
-     * is NULLABLE (MRR's B1a rule lands an intra-file duplicate loser with a NULL one), so
-     * keying or filtering on it silently drops rows.
+     * contract, while RJCT, CANC and EXPIRED are terminal and release it.
      */
-    public Optional<String> findLiveByContract(final String asOf, final String client, final String contractRef) {
-        return findLive("AND contract_ref = ?", asOf, List.of(client, contractRef));
+    public Optional<String> findLiveByContract(final String asOf, final String client,
+                                               final String contractRef, final UUID currentArrival) {
+        return findLive("AND e.contract_ref = ?", asOf, List.of(client, contractRef), currentArrival);
     }
 
     /** R-23/A-29 fallback: a blank contract_ref keys on the account triple instead. */
     public Optional<String> findLiveByAccounts(final String asOf, final String client,
-                                               final String debtorAccount, final String creditorAccount) {
-        return findLive("AND (contract_ref IS NULL OR contract_ref = '') "
-                + "AND debtor_account = ? AND creditor_account = ?",
-                asOf, List.of(client, debtorAccount, creditorAccount));
+                                               final String debtorAccount, final String creditorAccount,
+                                               final UUID currentArrival) {
+        return findLive("AND (e.contract_ref IS NULL OR e.contract_ref = '') "
+                + "AND e.debtor_account = ? AND e.creditor_account = ?",
+                asOf, List.of(client, debtorAccount, creditorAccount), currentArrival);
     }
 
     /**
-     * {@code raw_status <> 'PDNG'} is what excludes the arrival currently under validation.
-     * The view is spine-derived, so this arrival's own rows are in it, and their raw_status
-     * is the bottom of the COALESCE ladder ('PDNG') precisely because MRV has not verdicted
-     * them yet: a registration occupies a contract only once MRV has admitted it. Without
-     * this every row would see its own file's siblings as live twins. Note this is the
-     * RAW status, not the derived state: a prior mandate awaiting debtor authentication
-     * carries raw_status 'MRV_PASS' and state 'PDNG', and must still block.
+     * "Is this contract already taken" is a per-MANDATE question, so LIVENESS is asked of the
+     * per-MANDATE collapse {@code mandate_current_status} (mrg 007), the same relation
+     * {@code man_ctv_view} and the parity gate read. The per-INSTRUCTION
+     * {@code mandate_effective_status} it read before answers a different question and diverges
+     * on every terminal shape that lands on a LATER instruction: an accepted CANCEL, an MD07
+     * termination, a rejected AMEND. All three leave the CREATE instruction's own row ACCP for
+     * ever, so the contract stayed occupied by a mandate CTV had already stopped collecting for
+     * and the client could never re-register it (SCRUM-91 defect; MRG had already fixed the
+     * identical grain bug in its own suspension sweep).
+     *
+     * <p>CONTRACT IDENTITY is resolved on the SPINE, not on the collapse's own identity
+     * columns, because 007 publishes {@code max(contract_ref)} / {@code max(debtor_account)}
+     * over a mandate's instructions. max() is lexicographic, not latest, so a mandate whose
+     * instructions disagree would advertise a contract it may not hold and hide one it does.
+     * Keying on the spine blocks a contract that ANY instruction of the mandate binds it to,
+     * the fail-closed direction, and it also lets CockroachDB filter the collapse on
+     * {@code mandate_ref}, its GROUP BY key, instead of on aggregate outputs no predicate can
+     * be pushed below.
+     *
+     * <p>SELF-EXCLUSION can no longer key on raw_status: the collapse publishes no raw status
+     * and must not grow one for MRV's benefit. It is {@code e.arrival_id <> ?} instead, which
+     * excludes the mandates this arrival INTRODUCES and nothing else. Excluding every mandate
+     * the arrival merely mentions is wrong and was caught red: the replace-a-mandate file
+     * carries the replacement CREATE alongside the CANCEL of the mandate it replaces, and
+     * hiding that predecessor admits the twin onto an occupied contract, then NACKs the file's
+     * own CANCEL as the twin. Rows of THIS arrival claiming one contract are the caller's
+     * {@code admitted} map, not this read.
+     *
+     * <p>CockroachDB applies AS OF SYSTEM TIME to the whole statement, so the spine keying and
+     * the liveness rows come from the same instant.
+     *
+     * <p>Deliberate consequence of dropping the raw_status test: a PRIOR arrival that MRV has
+     * not verdicted yet reads PDNG here and now BLOCKS, where before it was invisible. That is
+     * the fail-closed direction, and it is the right one with no DB backstop (A-73): a
+     * transient false CONTRACT_HAS_LIVE_MANDATE is a resendable NACK, while two mandates
+     * admitted onto one contract by concurrent arrivals is unrecoverable double collection.
      *
      * <p>ORDER BY makes the pick deterministic when a contract somehow carries more than
      * one live mandate: the reported blocker must not change between reads.
      */
-    private Optional<String> findLive(final String keyPredicate, final String asOf, final List<String> params) {
+    private Optional<String> findLive(final String keyPredicate, final String asOf,
+                                      final List<String> params, final UUID currentArrival) {
         final List<String> live = new ArrayList<>();
-        final String sql = "SELECT mandate_ref FROM mandate_effective_status AS OF SYSTEM TIME '"
-                + requireHlc(asOf) + "' WHERE client = ? " + keyPredicate
-                + " AND state IN ('PDNG','ACCP','SUSPENDED') AND raw_status <> 'PDNG' "
+        final String sql = "SELECT mandate_ref FROM mandate_current_status AS OF SYSTEM TIME '"
+                + requireHlc(asOf) + "' WHERE state IN ('PDNG','ACCP','SUSPENDED') "
+                + "AND mandate_ref IN (SELECT e.mandate_ref FROM mandate_request_entry e "
+                + "JOIN mandate_request_header h ON h.arrival_id = e.arrival_id "
+                + "WHERE h.client_token = ? " + keyPredicate + " AND e.arrival_id <> ?) "
                 + "ORDER BY mandate_ref";
-        query(sql, params, rs -> live.add(rs.getString("mandate_ref")));
+        queryWithArrival(sql, params, currentArrival, rs -> live.add(rs.getString("mandate_ref")));
         return live.stream().findFirst();
     }
 

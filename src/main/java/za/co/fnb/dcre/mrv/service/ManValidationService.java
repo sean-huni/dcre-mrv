@@ -79,7 +79,7 @@ public class ManValidationService {
             return;
         }
         final Map<String, String> admitted = new HashMap<>();
-        final var liveTwins = liveMandates.forArrival(asOfTimestamp, clientToken, admitted);
+        final var liveTwins = liveMandates.forArrival(asOfTimestamp, clientToken, arrivalId, admitted);
         final Set<String> debtorAccounts = rows.stream()
                 .map(ManRequestEntryView::getDebtorAccount).collect(Collectors.toSet());
         final Set<String> refs = rows.stream()

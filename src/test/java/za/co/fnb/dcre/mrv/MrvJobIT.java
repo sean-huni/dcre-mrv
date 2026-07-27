@@ -74,8 +74,7 @@ class MrvJobIT {
 
     @BeforeEach
     void seedReference() {
-        ManTestTables.createSpine(jdbc);
-        ManEffectiveStatusTables.createViewStack(jdbc);
+        ManReadSideSchema.apply(jdbc);
         ManTestTables.seedAccount(jdbc, "6200000021", "CHQ");
         ManTestTables.seedAccount(jdbc, "6200000099", "SAV");
     }

@@ -7,6 +7,7 @@ import za.co.fnb.dcre.mrv.service.VerdictChain.LiveMandateLookup;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Business tier: picks the contract identity the 1:1-live invariant is keyed on and
@@ -22,9 +23,9 @@ import java.util.Optional;
  * arrival are judged against the same MVCC view. A mandate registered by a concurrent
  * arrival after the snapshot must not make row 1 and row 500 of this file disagree.
  *
- * <p>The snapshot cannot see the arrival being validated (its rows carry no verdict yet,
- * which is exactly how the DAO excludes them), so two rows of ONE file claiming the same
- * contract would both be admitted. {@code admitted} closes that: the caller records each
+ * <p>The snapshot deliberately cannot see the arrival being validated (the DAO excludes the
+ * mandates this arrival itself carries instructions for), so two rows of ONE file claiming the
+ * same contract would both be admitted. {@code admitted} closes that: the caller records each
  * contract identity as its row passes, so the first occurrence claims the contract and a
  * later one is a twin, the same later-occurrence-loses shape MRR's B1a rule uses.
  */
@@ -38,18 +39,19 @@ public class LiveMandateGuard {
     }
 
     /**
-     * The per-entry live-twin lookup for one arrival, pinned to its snapshot and client.
+     * The per-entry live-twin lookup for one arrival, pinned to its snapshot, client and
+     * arrival id (the DAO excludes this arrival's own mandates from the liveness read).
      * {@code admitted} is the caller's live map of contract identity to the mandate_ref
      * that already claimed it within THIS arrival; it is consulted before the snapshot.
      */
     public LiveMandateLookup forArrival(final String asOf, final String clientToken,
-                                        final Map<String, String> admitted) {
+                                        final UUID arrivalId, final Map<String, String> admitted) {
         return entry -> Optional.ofNullable(admitted.get(contractKey(entry)))
                 .or(() -> isBlank(entry.contractRef())
                         ? referenceSnapshot.findLiveByAccounts(asOf, clientToken,
-                                entry.debtorAccount(), entry.creditorAccount())
+                                entry.debtorAccount(), entry.creditorAccount(), arrivalId)
                         : referenceSnapshot.findLiveByContract(asOf, clientToken,
-                                entry.contractRef().strip()));
+                                entry.contractRef().strip(), arrivalId));
     }
 
     /** The contract identity the invariant is keyed on: contract_ref, else the account pair. */

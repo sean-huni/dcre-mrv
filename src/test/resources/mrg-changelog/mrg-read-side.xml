@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- TEST-ONLY master (never on the runtime classpath's db/changelog path): the relations
+         MRV READS but does not own, built from MRG's OWN changeset files, byte-identical
+         copies of
+         mrg/src/main/resources/db/changelog/2026/07/{001,004,005,007}.xml.
+
+         Why copies and not a hand-written CREATE TABLE / CREATE VIEW fixture: the previous
+         fixture paraphrased these definitions in Java text blocks and silently drifted from
+         them three ways at once (mnd_ext_status lost action_code, mnd_pbsr_pick lost its
+         PDNG-first pick ordering, and mandate_current_status was never created at all), which
+         is why no MRV test could see the grain defect SCRUM-91 fixed here. Copies are
+         byte-compared against MRG's sources by MrgChangelogDriftTest.
+
+         Only what MRV reads is included:
+           001 the MRR-owned request spine (row source of the whole derived stack),
+           004 the three leg reply tables + pick views + mnd_ext_status (per INSTRUCTION),
+           005 mandate_override + mandate_effective_status (per INSTRUCTION),
+           007 mandate_current_status (per MANDATE) + man_ctv_view.
+         MRG's 000 (account / account_type / mandate_reason_code) is deliberately absent:
+         MRV's OWN changelog owns those. 003, 006, 008 and 009 are MRG-internal reporting and
+         teardown that MRV never reads.
+
+         Every changeset here is MARK_RAN-guarded or replaceIfExists in its own file, so this
+         composes with whatever MRV's own migration already created (man_validation_log). -->
+
+    <include file="mrg-changelog/001-man-spine-bootstrap.xml"/>
+    <include file="mrg-changelog/004-man-views.xml"/>
+    <include file="mrg-changelog/005-man-effective.xml"/>
+    <include file="mrg-changelog/007-man-current-status.xml"/>
+
+</databaseChangeLog>
