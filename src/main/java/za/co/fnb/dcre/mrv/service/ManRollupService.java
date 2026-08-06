@@ -12,7 +12,7 @@ import java.util.UUID;
  * Business tier: the R-41 outcome rollup + the spine_state transition derived from
  * the durable man_validation_log. A structural fatal (any FAIL_STRUCTURE) or any
  * item fail under ALL_OR_NOTHING rejects the whole file (BUSINESS_FILE_REJECTED),
- * so every RECEIVED row goes REJECTED and nothing proceeds to MAF; PARTIAL lets the
+ * so every RECEIVED row goes REJECTED and nothing proceeds to MAS; PARTIAL lets the
  * passing rows advance to VALIDATED while failing rows go REJECTED; a clean arrival
  * is BUSINESS_ACCEPTED. All transitions are guarded on spine_state='RECEIVED', so
  * the rollup is idempotent + resumable.

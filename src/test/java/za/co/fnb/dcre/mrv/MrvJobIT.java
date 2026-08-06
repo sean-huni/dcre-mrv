@@ -133,7 +133,7 @@ class MrvJobIT {
         assertEquals("PASS", outcome(arrival, 1));
         assertEquals("FAIL_ACCOUNT_NOT_FOUND", outcome(arrival, 2));
         assertEquals(List.of("REJECTED", "REJECTED"), spineStates(arrival),
-                "ALL_OR_NOTHING: even the passing row is REJECTED so nothing proceeds to MAF");
+                "ALL_OR_NOTHING: even the passing row is REJECTED so nothing proceeds to MAS");
     }
 
     @Test

@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * the mandate table is gone, so MRV is the sole enforcement point and these tests are
  * the guard. Every case drives the REAL job so the rejection is proven end to end,
  * through the durable man_validation_log outcome MIR turns into a NACK reason and the
- * spine_state transition that stops the row reaching MAF.
+ * spine_state transition that stops the row reaching MAS.
  */
 @SpringBootTest(properties = "spring.batch.job.enabled=false")
 class OneLiveMandatePerContractIT {
@@ -140,7 +140,7 @@ class OneLiveMandatePerContractIT {
         assertEquals(LIVE_REASON, register("CL01", "MND41", "CONTRACTA"));
         assertEquals("REJECTED", jdbc.queryForObject(
                 "SELECT spine_state FROM mandate_request_entry WHERE mandate_ref=?", String.class, "MND41"),
-                "the rejected registration must not proceed to MAF");
+                "the rejected registration must not proceed to MAS");
     }
 
     @Test

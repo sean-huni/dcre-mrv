@@ -4,7 +4,7 @@ Mandates Request Validator: the second stage of the M10 mandates flow (SCRUM-75)
 
 ## What it does
 
-MRV is the DAG successor of MRR (`MRR -> MRV -> MAF -> MIT -> { MIR || MRW }`). AGT launches it as a short-lived Kubernetes Job with `arrival.id` as the identifying JobParameter (R-16). For every instruction record on the spine it runs the item-tier precedence chain, writes the verdict, and advances the `spine_state` column it owns (ruling note 2: MRR writes spine ROWS, MRV/MAF/MIT each advance the state columns they own).
+MRV is the DAG successor of MRR (`MRR -> MRV -> MAS -> MIT -> { MIR || MRW }`). AGT launches it as a short-lived Kubernetes Job with `arrival.id` as the identifying JobParameter (R-16). For every instruction record on the spine it runs the item-tier precedence chain, writes the verdict, and advances the `spine_state` column it owns (ruling note 2: MRR writes spine ROWS, MRV/MAS/MIT each advance the state columns they own).
 
 ### The VerdictChain (pure static, CTV pattern)
 
@@ -25,7 +25,7 @@ MRV is the DAG successor of MRR (`MRR -> MRV -> MAF -> MIT -> { MIR || MRW }`). 
 
 `service/ManRollupService` derives the seam verdict from the durable `man_validation_log` and transitions the spine accordingly:
 
-- a structural fatal (any `FAIL_STRUCTURE`), or any item fail under `ALL_OR_NOTHING` (the default acceptance mode), rejects the whole file (`BUSINESS_FILE_REJECTED`), so **every** RECEIVED row goes REJECTED and nothing proceeds to MAF;
+- a structural fatal (any `FAIL_STRUCTURE`), or any item fail under `ALL_OR_NOTHING` (the default acceptance mode), rejects the whole file (`BUSINESS_FILE_REJECTED`), so **every** RECEIVED row goes REJECTED and nothing proceeds to MAS;
 - under `PARTIAL`, passing rows advance to VALIDATED while failing rows go REJECTED (`BUSINESS_PARTIAL`);
 - a clean arrival is `BUSINESS_ACCEPTED`, all rows VALIDATED.
 
