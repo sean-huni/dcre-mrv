@@ -15,7 +15,7 @@ import java.util.UUID;
  * ({@code WHERE spine_state = 'RECEIVED'}, persistence.md) so it is:
  * <ul>
  *   <li>idempotent + resumable: a re-run touches zero already-transitioned rows,</li>
- *   <li>non-clobbering: a downstream stage's advancement (MAF SCORE_*, MIS
+ *   <li>non-clobbering: a downstream stage's advancement (MAF SCORE_*, MIT
  *       INITIALIZED) is never RECEIVED, so MRV cannot overwrite it.</li>
  * </ul>
  * Native @Query per the guarded-mutation canon (QueryDSL cannot express these).
