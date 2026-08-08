@@ -8,5 +8,6 @@
     <include file="db/changelog/2026/07/000-man-core-bootstrap.xml"/>
     <include file="db/changelog/2026/07/001-man-validation-log.xml"/>
     <include file="db/changelog/2026/07/002-batch-metadata.xml"/>
+    <include file="db/changelog/2026/08/003-account-reference-load.xml"/>
 
 </databaseChangeLog>

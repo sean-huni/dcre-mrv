@@ -34,9 +34,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class OneMandateDatabaseTest {
 
-    /** Names any second account store would have to use to be reachable at all. */
+    /**
+     * Names any second account store would have to use to be reachable at all.
+     *
+     * <p>SCRUM-107 removed the retired shared-reference-database literals from this list (the
+     * database name and its two published account views) along with the service that owned
+     * them. They named a store that no longer exists in any environment, so guarding against
+     * those names guarded against nothing,
+     * while the SHAPE tokens below still name the way a second store would have to arrive: a
+     * second set of datasource keys, a second datasource config, a second reference DAO. That
+     * shape is what recurs; the old database name is not.</p>
+     */
     private static final String[] SECOND_STORE_TOKENS = {
-            "dcre_acs", "acc_mrv_view", "acc_type_mrv_view",
             "accounts-db-url", "accounts-db-user", "accounts-db-password",
             "DCRE_MRV_ACCOUNTS_DB_URL", "AccountsDatasourceConfig", "AccountReferenceDao"};
 
