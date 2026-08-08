@@ -37,17 +37,37 @@ class OneMandateDatabaseTest {
     /**
      * Names any second account store would have to use to be reachable at all.
      *
-     * <p>SCRUM-107 removed the retired shared-reference-database literals from this list (the
-     * database name and its two published account views) along with the service that owned
-     * them. They named a store that no longer exists in any environment, so guarding against
-     * those names guarded against nothing,
-     * while the SHAPE tokens below still name the way a second store would have to arrive: a
-     * second set of datasource keys, a second datasource config, a second reference DAO. That
-     * shape is what recurs; the old database name is not.</p>
+     * <p>TWO KINDS OF TOKEN, AND BOTH EARN THEIR PLACE.
+     *
+     * <p>The SHAPE tokens name the way a second store would have to arrive whatever it was
+     * called: a second set of datasource keys, a second datasource config, a second reference
+     * DAO. That shape is what recurs, and a literal scan alone can always be satisfied by
+     * renaming rather than by removing the coupling, which is why the structural assertions
+     * below sit beside these.
+     *
+     * <p>The RETIRED-NAME tokens are the {@code dcre_acs} database and its two published
+     * account views. They name a store that exists in no environment, and the tempting
+     * argument is that guarding a name nothing can reach guards nothing. It is the wrong
+     * argument HERE, and the distinction is worth stating because this project applies the
+     * opposite rule to Liquibase guards a few files away. A {@code MARK_RAN} precondition
+     * that cannot fire is not free: it silently SKIPS the change on the day its assumption
+     * stops holding, converting a loud failure into a quietly missing table. A forbidden
+     * LITERAL has no such failure mode. It costs one string and it can only ever do one
+     * thing, which is fail the build the moment somebody reintroduces the name.
+     *
+     * <p>And reintroduction is the live risk, not a hypothetical one: this exact design was
+     * built on 2026-08-08 and reversed on 2026-08-09, so the shape is one revert away and
+     * it is documented at length in several READMEs where a reader could mistake the
+     * description for the design. The same reasoning keeps {@code acs} out of
+     * {@code ALLOWED_shared} in dcre-infra's verify-topology.sh, where a resurrected
+     * directory is reported UNDECLARED, and keeps a stale-{@code dcre_acs} case in that
+     * repo's database-roster harness. A tripwire is only worth having before the thing it
+     * catches happens.</p>
      */
     private static final String[] SECOND_STORE_TOKENS = {
             "accounts-db-url", "accounts-db-user", "accounts-db-password",
-            "DCRE_MRV_ACCOUNTS_DB_URL", "AccountsDatasourceConfig", "AccountReferenceDao"};
+            "DCRE_MRV_ACCOUNTS_DB_URL", "AccountsDatasourceConfig", "AccountReferenceDao",
+            "dcre_acs", "acc_mrv_view", "acc_type_mrv_view"};
 
     @Test
     void noShippedSourceReachesASecondAccountStore() throws Exception {
