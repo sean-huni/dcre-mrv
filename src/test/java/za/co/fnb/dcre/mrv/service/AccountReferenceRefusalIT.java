@@ -27,15 +27,22 @@ class AccountReferenceRefusalIT extends AbstractAccountReferenceIT {
     private static final List<String> ONE_MANDATE =
             List.of(AccountArtifactFixture.mandatesRow("62001482970090167", "FNBCC", "ACTIVE", "CHQ"));
 
-    /** Gate 1: absent means FAIL, never "carry on with what is already in the table". */
+    /**
+     * Gate 1 (state 1 of the three): absent means FAIL, never "carry on with what is already
+     * in the table".
+     *
+     * <p>Asserted as the WHOLE message, naming the exact path AND the version. A bare
+     * "it threw" passes for every reason a loader can die, and the operator value of this gate
+     * is entirely in it saying WHICH artifact it went looking for and did not find.
+     */
     @Test
-    void anAbsentArtifactDirectoryFails() {
+    void anAbsentArtifactDirectoryFailsNamingThePathAndVersion() {
         final Path root = tempDirectory("mrv-artifact-absent");
 
         assertThatThrownBy(() -> serviceFor(root, VERSION, null).load(null))
                 .isInstanceOf(AccountReferenceLoadFailure.class)
-                .hasMessageContaining("artifact directory is absent or not a directory")
-                .hasMessageContaining(VERSION);
+                .hasMessage("account reference artifact directory is absent or not a directory: "
+                        + root.resolve(VERSION));
         assertThat(accountRowCount()).isZero();
     }
 

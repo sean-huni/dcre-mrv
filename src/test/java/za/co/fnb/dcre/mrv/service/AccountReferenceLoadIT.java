@@ -26,10 +26,14 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The applied path, driven against the REAL committed artifact at
- * {@code infra/dcre-infra/fixtures/reference/account/2026.08.09-001/} through the COMMITTED
- * yml defaults. Hand-built fixtures on both sides of a seam are a drift class green tests
- * cannot see, so the case that proves the loader works reads the artifact the fleet ships.
+ * The applied path, driven against the REAL committed artifact SOURCE at
+ * {@code infra/dcre-infra/fixtures/reference/account/2026.08.09-001/}. Hand-built fixtures on
+ * both sides of a seam are a drift class green tests cannot see, so the case that proves the
+ * loader works parses the artifact the fleet ships.
+ *
+ * <p>The committed ROOT default is a separate question and is asserted as a literal against
+ * the yml, because the app reads infra's STAGED copy on the exchange volume and a working tree
+ * has no such copy to point a test at.
  */
 class AccountReferenceLoadIT extends AbstractAccountReferenceIT {
 
@@ -44,19 +48,47 @@ class AccountReferenceLoadIT extends AbstractAccountReferenceIT {
     Job accountReferenceLoadJob;
 
     /**
-     * The committed relative default must resolve from THIS module's directory. A relative
-     * path default that silently does not resolve is how a loader ends up creating a stray
-     * tree instead of failing.
+     * THE POD-VALIDITY PARITY GATE. The root default is asserted as a LITERAL against the
+     * committed yml, because the property this test can read through Spring has been
+     * redirected by the base class and would happily agree with any default at all.
+     *
+     * <p>What the literal has to say: the root derives from DCRE_EXCHANGE_ROOT, which AGT
+     * already injects as /exchange and which is the only volume a stage pod has. The previous
+     * default was a bare relative hop into the git fixtures tree, which cannot resolve inside a
+     * pod, and the consequence was not a startup error: the master stayed empty and every
+     * request came back FAIL_ACCOUNT_NOT_FOUND. A deployment step that never happened,
+     * reported as a file's worth of business rejections.
      */
     @Test
-    void theCommittedDefaultResolvesToTheRealArtifact() {
-        final Path directory = committedProperties.datasetDirectory();
+    void theCommittedRootDefaultDerivesFromTheExchangeRoot() throws Exception {
+        final String yml = Files.readString(Path.of("src/main/resources/application.yml"));
+
+        assertThat(yml).contains("root: ${DCRE_MRV_ACCOUNT_REFERENCE_ROOT:"
+                + "${DCRE_EXCHANGE_ROOT:../../../../../../infra/dcre-infra/exchange}"
+                + "/reference/account}");
+        assertThat(yml)
+                .as("the git fixtures tree is the artifact's SOURCE, never a path the app reads")
+                .doesNotContain("${DCRE_MRV_ACCOUNT_REFERENCE_ROOT:../../../../../../infra"
+                        + "/dcre-infra/fixtures/reference/account}");
+    }
+
+    /**
+     * The committed artifact SOURCE must resolve from THIS module's directory. A relative path
+     * that silently does not resolve is how a loader ends up creating a stray tree instead of
+     * failing, and it is also how this suite would start proving nothing.
+     */
+    @Test
+    void theCommittedArtifactSourceResolvesFromTheModuleDirectory() {
+        final Path directory = referenceProperties.datasetDirectory();
 
         assertThat(Files.isDirectory(directory))
-                .as("committed default %s must resolve from the module directory", directory)
+                .as("committed artifact source %s must resolve from the module directory", directory)
                 .isTrue();
-        assertThat(committedProperties.datasetVersion()).isEqualTo("2026.08.09-001");
-        assertThat(committedProperties.maxAge())
+        assertThat(directory.startsWith(ARTIFACT_SOURCE))
+                .as("the parsed artifact is the one committed under infra/dcre-infra/fixtures")
+                .isTrue();
+        assertThat(referenceProperties.datasetVersion()).isEqualTo("2026.08.09-001");
+        assertThat(referenceProperties.maxAge())
                 .as("max-age stays unset until A-4 defines the freshness contract")
                 .isNull();
     }
@@ -68,8 +100,8 @@ class AccountReferenceLoadIT extends AbstractAccountReferenceIT {
      */
     @Test
     void theRealArtifactMaterialisesItsHundredMandatesRowsAndRecordsTheLoad() {
-        final int applied = serviceFor(committedProperties.root(),
-                committedProperties.datasetVersion(), null).load(null);
+        final int applied = serviceFor(referenceProperties.root(),
+                referenceProperties.datasetVersion(), null).load(null);
 
         assertThat(applied).isEqualTo(100);
         assertThat(accountRowCount()).isEqualTo(100);
@@ -96,7 +128,7 @@ class AccountReferenceLoadIT extends AbstractAccountReferenceIT {
      */
     @Test
     void theLoadNeverTouchesTheClosedAccountTypeVocabulary() {
-        serviceFor(committedProperties.root(), committedProperties.datasetVersion(), null).load(null);
+        serviceFor(referenceProperties.root(), referenceProperties.datasetVersion(), null).load(null);
 
         assertThat(jdbc.queryForList("SELECT code FROM account_type ORDER BY code", String.class))
                 .containsExactly("CC", "CHQ", "RF", "SAV", "TRN");
@@ -114,7 +146,7 @@ class AccountReferenceLoadIT extends AbstractAccountReferenceIT {
     void anUnsetMaxAgeLeavesTheFreshnessGateInertAndSaysSoOnEveryRun() {
         final ListAppender<ILoggingEvent> appender = attachAppender();
         try {
-            serviceFor(committedProperties.root(), committedProperties.datasetVersion(), null).load(null);
+            serviceFor(referenceProperties.root(), referenceProperties.datasetVersion(), null).load(null);
 
             assertThat(appender.list.stream().map(ILoggingEvent::getFormattedMessage))
                     .as("an inert gate that says nothing is indistinguishable from an absent one")

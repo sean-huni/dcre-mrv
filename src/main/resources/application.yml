@@ -32,10 +32,16 @@ dcre:
   mrv:
     reference:
       account:
-        # Same relative-hop form as dcre.exchange-root above: six hops from this module
-        # directory to the repo root, then infra/dcre-infra. Deployed contexts override
-        # with an absolute path (12FactorApp Alignment - https://12factor.net/).
-        root: ${DCRE_MRV_ACCOUNT_REFERENCE_ROOT:../../../../../../infra/dcre-infra/fixtures/reference/account}
+        # DERIVED FROM THE EXCHANGE ROOT, which AGT already injects as
+        # DCRE_EXCHANGE_ROOT=/exchange and which is the only volume a stage pod has. A pod
+        # therefore resolves /exchange/reference/account on the dcre-exchange PVC, and NO
+        # new AGT env injection is needed for the root at all (12FactorApp Alignment -
+        # https://12factor.net/). A dev machine with no .env resolves
+        # infra/dcre-infra/exchange/reference/account.
+        # fixtures/reference/account stays the committed SOURCE of the artifact in git;
+        # infra's deploy-time step VALIDATES it and stages a copy into the exchange root.
+        # The app reads the STAGED copy, never the git fixtures path.
+        root: ${DCRE_MRV_ACCOUNT_REFERENCE_ROOT:${DCRE_EXCHANGE_ROOT:../../../../../../infra/dcre-infra/exchange}/reference/account}
         # The version THIS service demands. The loader never picks the newest directory:
         # that would be a fail-open, and a consumer that cannot say which dataset it ran
         # against has no record worth keeping.

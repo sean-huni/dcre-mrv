@@ -64,10 +64,12 @@ class OneLiveMandatePerContractIT {
     @Autowired
     ManReferenceSnapshotDao snapshotDao;
 
+    /** Account master plus the load ledger row MRV's materialisation guard requires. */
     @BeforeEach
     void seedReference() {
         ManReadSideSchema.apply(jdbc);
         ManTestTables.seedAccount(jdbc, DEBTOR, "CHQ");
+        ManTestTables.seedAccountReferenceLoad(jdbc, "2026.08.09-001", 1);
     }
 
     /** Registers one CREATE for {@code contract} and returns the verdict MRV durably recorded. */
