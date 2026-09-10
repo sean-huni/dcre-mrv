@@ -72,11 +72,18 @@ class MrvJobIT {
     @Autowired
     JdbcTemplate jdbc;
 
+    /**
+     * The account master AND the load ledger that says a materialisation put it there. The
+     * ledger row is not decoration: MRV halts a run whose account master was never
+     * materialised, so a fixture that seeds accounts without it describes an environment no
+     * validation should ever be allowed to run in.
+     */
     @BeforeEach
     void seedReference() {
         ManReadSideSchema.apply(jdbc);
         ManTestTables.seedAccount(jdbc, "6200000021", "CHQ");
         ManTestTables.seedAccount(jdbc, "6200000099", "SAV");
+        ManTestTables.seedAccountReferenceLoad(jdbc, "2026.08.09-001", 2);
     }
 
     private JobExecution run(final UUID arrival, final String attempt) throws Exception {

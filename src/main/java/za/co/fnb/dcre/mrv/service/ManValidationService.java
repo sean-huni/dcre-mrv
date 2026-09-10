@@ -35,8 +35,11 @@ public class ManValidationService {
 
     private static final Logger log = LoggerFactory.getLogger(ManValidationService.class);
 
-    /** The acceptance-mode client token plus the single as-of HLC for this arrival's reference reads. */
-    public record HeaderSnapshot(String clientToken, String asOfTimestamp) {
+    /**
+     * The acceptance-mode client token, the single as-of HLC for this arrival's reference
+     * reads, and the account reference dataset this run is judging against.
+     */
+    public record HeaderSnapshot(String clientToken, String asOfTimestamp, String accountDatasetVersion) {
     }
 
     private final ManRequestHeaderRepo headers;
@@ -44,19 +47,30 @@ public class ManValidationService {
     private final ManReferenceSnapshotDao referenceSnapshot;
     private final ManValidationLogBatchDao verdictBatch;
     private final LiveMandateGuard liveMandates;
+    private final AccountReferenceGuard accountReference;
 
     public ManValidationService(final ManRequestHeaderRepo headers, final ManRequestEntryRepo entries,
                                 final ManReferenceSnapshotDao referenceSnapshot,
                                 final ManValidationLogBatchDao verdictBatch,
-                                final LiveMandateGuard liveMandates) {
+                                final LiveMandateGuard liveMandates,
+                                final AccountReferenceGuard accountReference) {
         this.headers = headers;
         this.entries = entries;
         this.referenceSnapshot = referenceSnapshot;
         this.verdictBatch = verdictBatch;
         this.liveMandates = liveMandates;
+        this.accountReference = accountReference;
     }
 
-    /** Tier 1: client identity (for the R-41 acceptance mode) + F51 snapshot capture. */
+    /**
+     * Tier 1: client identity (for the R-41 acceptance mode), F51 snapshot capture, and the
+     * ONCE-PER-RUN materialisation guard.
+     *
+     * <p>The guard runs here and nowhere else. It reads the account_reference_load ledger AS OF
+     * the HLC just captured, so it answers for exactly the MVCC view tier 2 will judge against,
+     * and it halts the run when the account master was never materialised rather than letting
+     * every row fall through to FAIL_ACCOUNT_NOT_FOUND.
+     */
     public HeaderSnapshot checkHeader(final UUID arrivalId) {
         final ManRequestHeaderView header = headers.findByArrivalId(arrivalId).orElseThrow(
                 () -> new IllegalStateException("no mandate_request_header for arrival " + arrivalId
@@ -64,7 +78,9 @@ public class ManValidationService {
         final String clientToken = header.getClientToken() != null && !header.getClientToken().isBlank()
                 ? header.getClientToken().strip()
                 : String.valueOf(header.getDestinationId()).strip();
-        return new HeaderSnapshot(clientToken, referenceSnapshot.snapshotTimestamp());
+        final String asOfTimestamp = referenceSnapshot.snapshotTimestamp();
+        return new HeaderSnapshot(clientToken, asOfTimestamp,
+                accountReference.requireMaterialised(asOfTimestamp));
     }
 
     /**

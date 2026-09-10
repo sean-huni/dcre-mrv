@@ -70,6 +70,25 @@ public final class ManTestTables {
                 arrival, sequence, action, ref, spineState);
     }
 
+    /**
+     * The provenance row MRV's materialisation guard reads before it judges anything.
+     *
+     * <p>These suites seed the account master row by row rather than running the loader, so
+     * without a ledger row every job would halt on "never materialised". That is the guard
+     * working, not a fixture defect: an environment holding accounts that no recorded load put
+     * there is exactly the state nobody should be able to validate against by accident.
+     * effective_ts / publication_ts come from {@code now()} so no timestamp literal has to
+     * survive a dialect.
+     */
+    public static void seedAccountReferenceLoad(final JdbcTemplate jdbc, final String datasetVersion,
+                                                final int appliedRowCount) {
+        jdbc.update("""
+                INSERT INTO account_reference_load (dataset_version, schema_version, source_id,
+                    effective_ts, publication_ts, row_count, checksum, applied_row_count)
+                VALUES (?, 1, 'fixture:mrv-test', now(), now(), ?, ?, ?)""",
+                datasetVersion, appliedRowCount, "0".repeat(64), appliedRowCount);
+    }
+
     public static void seedAccount(final JdbcTemplate jdbc, final String number, final String typeCode) {
         jdbc.update("""
                 INSERT INTO account (account_number, account_type_code, status)

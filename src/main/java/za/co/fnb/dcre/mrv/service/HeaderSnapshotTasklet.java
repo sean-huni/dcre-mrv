@@ -12,6 +12,10 @@ import java.util.UUID;
  * Thin entry adapter (3-tier, configuration.md point 21): resolves the client
  * token and captures the single CTV F51 as-of HLC into the job execution context,
  * shared by the validate + rollup steps.
+ *
+ * <p>It also records the account reference dataset the run consumed, so "which data did
+ * this run judge against" is answerable from Batch metadata afterwards rather than by
+ * reading the ledger later and hoping nothing has been reloaded since.
  */
 @Component
 public class HeaderSnapshotTasklet implements Tasklet {
@@ -31,6 +35,7 @@ public class HeaderSnapshotTasklet implements Tasklet {
         final ManValidationService.HeaderSnapshot snapshot = service.checkHeader(arrivalId);
         context.putString("clientToken", snapshot.clientToken());
         context.putString("asOfTimestamp", snapshot.asOfTimestamp());
+        context.putString("accountDatasetVersion", snapshot.accountDatasetVersion());
         return RepeatStatus.FINISHED;
     }
 }

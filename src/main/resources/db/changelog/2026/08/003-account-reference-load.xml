@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ===================================================================================
+         SCRUM-107: the record of which account reference ARTIFACT this context consumed.
+
+         MRV-ONLY FILE. 000-man-core-bootstrap.xml is byte-identical across all ten
+         M-services and carries convergence guards because ten independent histories
+         migrate the one dcre_man with nothing serialising them. This table is different:
+         MRV is its only writer and its only reader, no infra script creates it, and no
+         sibling M-service ships it. So there is no writer to converge with, which is why
+         this changeset carries NO MARK_RAN precondition, no IF NOT EXISTS and no
+         validCheckSum. It is a fresh v1 for an object that cannot already exist.
+
+         account and account_type are NOT touched here. The loader materialises rows into
+         the EXISTING dcre_man.account created by 000-man-core-bootstrap.xml, keeping that
+         table's own NOT NULLs, and account_type stays a closed vocabulary seeded by that
+         same file.
+         =================================================================================== -->
+
+    <changeSet id="mrv-003-account-reference-load" author="dcre">
+        <createTable tableName="account_reference_load">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <!-- Every column names an attribute of the LOAD, never of the host table, so
+                 nothing here repeats account_reference_load (architecture.md naming rule). -->
+            <column name="dataset_version" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="schema_version" type="INT"><constraints nullable="false"/></column>
+            <column name="source_id" type="VARCHAR(256)"><constraints nullable="false"/></column>
+            <column name="effective_ts" type="TIMESTAMPTZ"><constraints nullable="false"/></column>
+            <column name="publication_ts" type="TIMESTAMPTZ"><constraints nullable="false"/></column>
+            <!-- The manifest's own count over the WHOLE artifact (110), not this context's
+                 projection: applied_row_count carries what MRV actually materialised (100). -->
+            <column name="row_count" type="INT"><constraints nullable="false"/></column>
+            <column name="checksum" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="applied_row_count" type="INT"><constraints nullable="false"/></column>
+            <!-- Nullable: the load service is callable outside a Batch step. -->
+            <column name="job_execution_id" type="BIGINT"/>
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="account_reference_load" indexName="ix_account_reference_load_applied">
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

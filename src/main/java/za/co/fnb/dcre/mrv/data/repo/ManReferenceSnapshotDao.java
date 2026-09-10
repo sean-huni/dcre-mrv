@@ -65,6 +65,30 @@ public class ManReferenceSnapshotDao {
         return byNumber;
     }
 
+    /** The two facts the materialisation guard needs from the newest account reference load. */
+    public record AccountReferenceLoad(String datasetVersion, int appliedRowCount) {
+    }
+
+    /**
+     * The newest {@code account_reference_load} row, or empty when the loader has NEVER run.
+     * The ledger row is written in the same transaction as the account rows it materialised,
+     * so it states what the master currently holds; counting {@code account} and inferring
+     * would answer a different, race-prone question.
+     *
+     * <p>Read AS OF the SAME captured HLC and on the SAME own-connection path as every other
+     * reference read here, deliberately: a technical read failure then raises this DAO's
+     * {@code as-of reference read failed} rather than degrading to an empty Optional, which
+     * the guard would report as "never loaded" and blame on a deployment step that did run.
+     */
+    public Optional<AccountReferenceLoad> latestAccountReferenceLoad(final String asOf) {
+        final List<AccountReferenceLoad> newest = new ArrayList<>();
+        final String sql = "SELECT dataset_version, applied_row_count FROM account_reference_load "
+                + "AS OF SYSTEM TIME '" + requireHlc(asOf) + "' ORDER BY created_at DESC LIMIT 1";
+        query(sql, Set.of(), rs -> newest.add(new AccountReferenceLoad(
+                rs.getString("dataset_version"), rs.getInt("applied_row_count"))));
+        return newest.stream().findFirst();
+    }
+
     /** account_type reference (code -> mandates_allowed); tiny table, read whole. */
     public Map<String, Boolean> mandatesAllowedByType(final String asOf) {
         final Map<String, Boolean> allowed = new HashMap<>();

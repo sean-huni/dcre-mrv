@@ -3,6 +3,15 @@ spring:
   threads:
     virtual:
       enabled: true
+  batch:
+    # SCRUM-107: MRV now ships two jobs (arrival validation / account reference artifact
+    # load); Boot's JobLauncherApplicationRunner refuses to start with more than one Job
+    # bean unless a name selects one, so the selector is committed here with the
+    # validation flow as the default. A reference load is launched by overriding
+    # DCRE_MRV_JOB_NAME with mrvAccountReferenceLoadJob. Same mechanism MRG uses for its
+    # report/sweep pair (DCRE_MRG_JOB_NAME).
+    job:
+      name: ${DCRE_MRV_JOB_NAME:mrvJob}
   datasource:
     url: ${DCRE_DB_URL:jdbc:postgresql://localhost:26257/dcre_man?sslmode=disable}
     username: ${DCRE_DB_USER:root}
@@ -19,8 +28,27 @@ dcre:
   agtops-db-url: ${DCRE_AGTOPS_DB_URL:jdbc:postgresql://localhost:26257/agt_ops?sslmode=disable}
   agtops-db-user: ${DCRE_AGTOPS_DB_USER:root}
   agtops-db-password: ${DCRE_AGTOPS_DB_PASSWORD:}
-  exchange-root: ${DCRE_EXCHANGE_ROOT:../../../../../infra/dcre-infra/exchange}
+  exchange-root: ${DCRE_EXCHANGE_ROOT:../../../../../../infra/dcre-infra/exchange}
   mrv:
+    reference:
+      account:
+        # DERIVED FROM THE EXCHANGE ROOT, which AGT already injects as
+        # DCRE_EXCHANGE_ROOT=/exchange and which is the only volume a stage pod has. A pod
+        # therefore resolves /exchange/reference/account on the dcre-exchange PVC, and NO
+        # new AGT env injection is needed for the root at all (12FactorApp Alignment -
+        # https://12factor.net/). A dev machine with no .env resolves
+        # infra/dcre-infra/exchange/reference/account.
+        # fixtures/reference/account stays the committed SOURCE of the artifact in git;
+        # infra's deploy-time step VALIDATES it and stages a copy into the exchange root.
+        # The app reads the STAGED copy, never the git fixtures path.
+        root: ${DCRE_MRV_ACCOUNT_REFERENCE_ROOT:${DCRE_EXCHANGE_ROOT:../../../../../../infra/dcre-infra/exchange}/reference/account}
+        # The version THIS service demands. The loader never picks the newest directory:
+        # that would be a fail-open, and a consumer that cannot say which dataset it ran
+        # against has no record worth keeping.
+        dataset-version: ${DCRE_MRV_ACCOUNT_DATASET_VERSION:2026.08.09-001}
+        # max-age: DELIBERATELY UNSET. See A-4. The freshness gate is wired and INERT, and
+        # says so at INFO on every run; setting a Duration here arms it. No number is
+        # invented in code, in this file, or in a test resource.
     # R-41 acceptance semantics mirror CTV: whole-file rejection on any business FAIL
     # unless a client is explicitly mapped to PARTIAL. Binding is directly to the enum,
     # so an unknown mode value fails startup (fail closed).

@@ -26,7 +26,7 @@ import za.co.fnb.dcre.platform.batch.OutcomeSeamListener;
  * over the spine, writes man_validation_log) -> rollup (R-41 acceptance-mode exit +
  * spine_state VALIDATED|REJECTED transition). Identifying JobParameter: arrival.id
  * (R-16). Runs on the default SERIALIZABLE isolation (cluster_logical_timestamp()
- * AS-OF snapshot is SERIALIZABLE-only; only PRG carries READ COMMITTED, SCRUM-90).
+ * AS-OF snapshot is SERIALIZABLE-only; only CRG carries READ COMMITTED, SCRUM-90).
  */
 @Configuration
 @EnableConfigurationProperties(AcceptanceModeProperties.class)

@@ -5,16 +5,39 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
-    <!-- man_validation_log: MRV single writer (R-04). One durable verdict row per
-         instruction record keyed on the FULL business identity (arrival_id, sequence):
-         the UNIQUE lets the guarded INSERT ... ON CONFLICT DO NOTHING make a resume a
-         zero-duplicate no-op (never UPSERT on the PK; CRDB resolves UPSERT on PK only,
-         persistence.md). outcome carries the platform-model MandateOutcome name (R-21:
-         code values, never enum ordinals); detail holds a short human diagnosis.
-         MRV reads the mrr-owned spine (mandate_request_entry) and account/account_type
-         from the shared dcre_man core (000-man-core-bootstrap.xml); it OWNS this table
-         and the spine_state VALIDATED|REJECTED transition (ruling note 2). -->
+    <!-- ===================================================================================
+         V1 BASELINE (SCRUM-107, owner directive 2026-08-08). THIS FILE MINTS man_validation_log
+         ON A DATABASE THAT HAS NEVER HELD IT.
+
+         Every DCRE database is dropped and recreated for the direct cut-over, so this changelog
+         has no history to converge with and no shape to retrofit. There is no
+         <validCheckSum>ANY</validCheckSum> (nothing ever recorded a checksum), no defensive
+         IF NOT EXISTS (nothing exists), and no additive <addColumn> chasing the current shape:
+         the final shape of the table IS the <createTable> below.
+
+         THE ONE MARK_RAN GUARD BELOW IS A CONVERGENCE GUARD, NOT A RETROFIT. man_validation_log
+         has TWO creators on a brand-new dcre_man, and nothing serializes them.
+         =================================================================================== -->
+
+    <!-- man_validation_log: MRV is the single WRITER of its rows (R-04). One durable verdict row
+         per instruction record keyed on the FULL business identity (arrival_id, sequence): the
+         UNIQUE lets the guarded INSERT ... ON CONFLICT DO NOTHING make a resume a zero-duplicate
+         no-op (never UPSERT on the PK; CRDB resolves UPSERT on PK only, persistence.md). outcome
+         carries the platform-model MandateOutcome name (R-21: code values, never enum ordinals);
+         detail holds a short human diagnosis. MRV reads the mrr-owned spine
+         (mandate_request_entry) and account/account_type from the shared dcre_man core
+         (000-man-core-bootstrap.xml); it OWNS this table and the spine_state
+         VALIDATED|REJECTED transition (ruling note 2). -->
     <changeSet id="mrv-001-man-validation-log" author="dcre">
+        <!-- CONVERGENCE GUARD: this table has a SECOND creator. MRG pre-creates it in changeset
+             004-bootstrap-man-validation-log-mrg of mrg's 2026/07/004-man-views.xml, because its
+             mnd_ext_status precedence view COALESCEs down to MRV's outcome and MRG is
+             clock-launched, so it can migrate a fresh dcre_man before MRV has ever run. All ten
+             M-services migrate the one dcre_man behind ten independent history tables and nothing
+             serializes them, so either side can arrive first: whichever creates the table wins and
+             the other's changeset MARK_RANs. MRG's copy is byte-equivalent to the shape below,
+             uq_man_validation_arrival_sequence included, so the winner is immaterial. This is NOT
+             a re-run guard for an already-migrated database, of which there are none in v1. -->
         <preConditions onFail="MARK_RAN">
             <not><tableExists tableName="man_validation_log"/></not>
         </preConditions>

@@ -31,11 +31,15 @@ class MrgChangelogDriftTest {
             "001-man-spine-bootstrap.xml", "004-man-views.xml",
             "005-man-effective.xml", "007-man-current-status.xml");
 
-    /** MRG-internal: core bootstrap MRV owns its own copy of, batch metadata, reporting, teardown. */
+    /**
+     * MRG-internal: the core bootstrap MRV owns its own copy of, batch metadata, reporting and
+     * the status-history audit. SCRUM-107 removed 006-drop-man-ext-status.xml and
+     * 009-drop-mandate-projection.xml from this list along with the files themselves: the v1
+     * baseline mints neither shape, so it has no teardown to exempt.
+     */
     private static final List<String> NOT_READ_BY_MRV = List.of(
             "000-man-core-bootstrap.xml", "002-batch-metadata.xml", "003-man-reporting.xml",
-            "006-drop-man-ext-status.xml", "008-man-status-history.xml",
-            "009-drop-mandate-projection.xml");
+            "008-man-status-history.xml");
 
     @Test
     void everyCopiedChangelogIsByteIdenticalToMrgsOwn() throws IOException {

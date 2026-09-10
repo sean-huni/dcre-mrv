@@ -15,11 +15,11 @@ MRV is the DAG successor of MRR (`MRR -> MRV -> MAS -> MIT -> { MIR || MRW }`). 
 3. **account exists** (`FAIL_ACCOUNT_NOT_FOUND`): the debtor account is present in the `dcre_man` `account` master.
 4. **account_type allows mandates** (`FAIL_ACCOUNT_TYPE_DISALLOWED`, AG01 class): `account_type.mandates_allowed`.
 5. **contract format** (`FAIL_CONTRACT_FORMAT`, A-61 SYNTHETIC): `contract_ref` matches the un-attested format rule (non-blank alphanumeric up to width 14).
-6. **action-specific**: AMEND/CANCEL require the `mandate_ref` to be a KNOWN prior registration on the spine or projection (`FAIL_AMEND_UNKNOWN_REF` / `FAIL_CANCEL_UNKNOWN_REF`); CREATE requires its ABSENCE, a collision with a prior registration reusing `FAIL_DUPLICATE_REF` (the only ref-clash code in the fixed vocabulary). "Known" excludes the current arrival's own rows, so a CREATE never collides with its own RECEIVED spine row.
+6. **action-specific**: AMEND/CANCEL require the `mandate_ref` to be a KNOWN prior registration, either decided in the MRG-derived `mandate_effective_status` view or already on a prior arrival's spine (`FAIL_AMEND_UNKNOWN_REF` / `FAIL_CANCEL_UNKNOWN_REF`); CREATE requires its ABSENCE, a collision with a prior registration reusing `FAIL_DUPLICATE_REF` (the only ref-clash code in the fixed vocabulary). "Known" excludes the current arrival's own rows, so a CREATE never collides with its own RECEIVED spine row.
 
 ### AS-OF snapshot (CTV F51 pattern)
 
-`data/repo/ManReferenceSnapshotDao` reads the `account`, `account_type`, and known-ref stores via CockroachDB `AS OF SYSTEM TIME` at a single HLC captured once at the header step (`cluster_logical_timestamp()`), so every row of an arrival is judged against one consistent MVCC view even under a concurrent reference mutation. The as-of reads run on their own read-only connection. MRV runs on the default SERIALIZABLE isolation (the HLC snapshot is SERIALIZABLE-only; only PRG carries READ COMMITTED, SCRUM-90).
+`data/repo/ManReferenceSnapshotDao` reads the `account`, `account_type`, and known-ref stores via CockroachDB `AS OF SYSTEM TIME` at a single HLC captured once at the header step (`cluster_logical_timestamp()`), so every row of an arrival is judged against one consistent MVCC view even under a concurrent reference mutation. The as-of reads run on their own read-only connection. MRV runs on the default SERIALIZABLE isolation (the HLC snapshot is SERIALIZABLE-only; only CRG carries READ COMMITTED, SCRUM-90).
 
 ### Outcome rollup (R-41) and spine transition
 
@@ -47,16 +47,16 @@ Ephemeral Spring Boot 4.1.0 / Spring Batch 6 / Java 25 batch job cloned from the
 
 ## Database
 
-Liquibase owns the schema in the shared `dcre_man`, per-service history tables (`mrv_databasechangelog` / `mrv_databasechangeloglock`), calendar layout `2026/07/`, pure-XML typed changesets (MARK_RAN bootstrap guards):
+Liquibase owns the schema in the shared `dcre_man`, per-service history tables (`mrv_databasechangelog` / `mrv_databasechangeloglock`), calendar layout `2026/07/`, pure-XML typed changesets. This changelog is the **v1 baseline** (SCRUM-107): every DCRE database is dropped and recreated for the direct cut-over, so there is no historic state to converge and no retrofit apparatus. The only `MARK_RAN` preconditions that remain are convergence guards on objects with more than one creator, and each says at the changeset which writer it converges with.
 
-- `000-man-core-bootstrap.xml`: byte-equivalent VERBATIM copy of MRR's shared-core bootstrap (only the changeset ids are `mrv-` prefixed, per the shared-core canon) so concurrent first runs of any M-service converge.
-- `001-man-validation-log.xml`: `man_validation_log` (`arrival_id`, `sequence`, `outcome`, `detail`, UNIQUE (`arrival_id`, `sequence`)). MRV is the sole writer (R-04).
-- `002-batch-metadata.xml`: Liquibase-owned Spring Batch 6.0.4 DDL (`batch-metadata-mrv.sql`), prefixed `MRV_BATCH_`, EXIT_MESSAGE widened to TEXT for CockroachDB.
+- `000-man-core-bootstrap.xml`: the shared reference core (`account_type`, `account`, `mandate_reason_code` plus their seeds), byte-identical across all ten M-services except for the `mrv-` changeset id prefix. Guarded, because the dcre-infra `seed-man-core.sql` bootstrap and any sibling M-service can create these first.
+- `001-man-validation-log.xml`: `man_validation_log` (`arrival_id`, `sequence`, `outcome`, `detail`, UNIQUE (`arrival_id`, `sequence`)). MRV is the sole WRITER of its rows (R-04); the create is guarded because MRG pre-creates the same table in its `004-man-views.xml`.
+- `002-batch-metadata.xml`: Liquibase-owned Spring Batch 6.0.4 metadata as typed XML, one changeset per object, prefixed `MRV_BATCH_`, EXIT_MESSAGE widened to TEXT for CockroachDB. Unguarded: MRV is the only creator of its own prefix.
 
-MRV reads the MRR-owned spine (`mandate_request_header` / `mandate_request_entry`) and the shared core (`account` / `account_type` / `mandate`); it never re-declares the spine in its own changelog (CTV reads the crr-owned tx spine the same way).
+MRV reads the MRR-owned spine (`mandate_request_header` / `mandate_request_entry`), the shared core (`account` / `account_type`) and the MRG-owned derived status views; it never re-declares the spine in its own changelog (CTV reads the crr-owned tx spine the same way).
 
 ## Tests
 
 - `service/VerdictChainTest`: pure-unit coverage of every chain stage (positive + negative) and the precedence guarantees.
-- `MrvJobIT`: the full job over real CockroachDB (Testcontainers) for every stage end to end, the R-41 rollup modes (ACCEPTED / PARTIAL / FILE_REJECTED, structural override), the projection + prior-spine known-ref checks, and the resume/idempotency zero-duplicate audit.
+- `MrvJobIT`: the full job over real CockroachDB (Testcontainers) for every stage end to end, the R-41 rollup modes (ACCEPTED / PARTIAL / FILE_REJECTED, structural override), the derived-status + prior-spine known-ref checks, and the resume/idempotency zero-duplicate audit.
 - `config/AcceptanceModePropertiesTest`: acceptance-mode resolution.
