@@ -23,6 +23,10 @@
          =================================================================================== -->
 
     <changeSet id="mrv-003-account-reference-load" author="dcre">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="account_reference_load"/></not>
+        </preConditions>
+        
         <createTable tableName="account_reference_load">
             <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
                 <constraints primaryKey="true" nullable="false"/>
