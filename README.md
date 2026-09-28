@@ -36,7 +36,7 @@ MRV is the DAG successor of MRR (`MRR -> MRV -> MAS -> MIT -> { MIR || MRW }`). 
 
 ### AS-OF snapshot (CTV F51 pattern)
 
-`data/repo/ManReferenceSnapshotDao` reads the `account`, `account_type`, and known-ref stores via CockroachDB `AS OF SYSTEM TIME` at a single HLC captured once at the header step (`cluster_logical_timestamp()`), so every row of an arrival is judged against one consistent MVCC view even under a concurrent reference mutation. The as-of reads run on their own read-only connection. MRV runs on the default SERIALIZABLE isolation (the HLC snapshot is SERIALIZABLE-only; only CRG carries READ COMMITTED, SCRUM-90).
+`data/repo/ManReferenceSnapshotDao` reads the `account`, `account_type`, and known-ref stores via CockroachDB `AS OF SYSTEM TIME` at a single HLC captured once at the header step (`cluster_logical_timestamp()`), so every row of an arrival is judged against one consistent MVCC view even under a concurrent reference mutation. The as-of reads run on their own read-only connection. MRV runs on the default SERIALIZABLE isolation (the HLC snapshot is SERIALIZABLE-only; the report generators CRG, PRG and MRG run READ COMMITTED via their `application.yml`, SCRUM-90; checked 2026-09-28).
 
 ### Outcome rollup (R-41) and spine transition
 
@@ -77,7 +77,7 @@ One business datasource: `dcre_man` via `DCRE_DB_URL` / `DCRE_DB_USER` / `DCRE_D
 
 Liquibase owns the schema in the shared `dcre_man`, per-service history tables (`mrv_databasechangelog` / `mrv_databasechangeloglock`), calendar layout `2026/07/`, pure-XML typed changesets. This changelog is the **v1 baseline** (SCRUM-107): every DCRE database is dropped and recreated for the direct cut-over, so there is no historic state to converge and no retrofit apparatus. The only `MARK_RAN` preconditions that remain are convergence guards on objects with more than one creator, and each says at the changeset which writer it converges with.
 
-- `000-man-core-bootstrap.xml`: the shared reference core (`account_type`, `account`, `mandate_reason_code` plus their seeds), structurally identical (comments and the `mrv-` changeset id prefix aside) to the copies in mrr, mas, mit and mir (checked 2026-09-28). Guarded, because the dcre-infra `seed-man-core.sql` bootstrap and any sibling mandates service can create these first.
+- `000-man-core-bootstrap.xml`: the shared reference core (`account_type`, `account`, `mandate_reason_code` plus their seeds), structurally identical (comments and the `mrv-` changeset id prefix aside) to the copies in the other nine mandates stages, mrr, mas, mit, mir, mrw, mix, msx, mpx and mrg (ten copies in all, one per mandates stage; checked 2026-09-28). Guarded, because the dcre-infra `seed-man-core.sql` bootstrap and any sibling mandates service can create these first.
 - `001-man-validation-log.xml`: `man_validation_log` (`arrival_id`, `sequence`, `outcome`, `detail`, UNIQUE (`arrival_id`, `sequence`)). MRV is the sole WRITER of its rows (R-04); the create is guarded because MRG pre-creates the same table in its `004-man-views.xml`.
 - `002-batch-metadata.xml`: Liquibase-owned Spring Batch 6.0.4 metadata as typed XML, one changeset per object, prefixed `MRV_BATCH_`, EXIT_MESSAGE widened to TEXT for CockroachDB. Unguarded: MRV is the only creator of its own prefix.
 - `2026/08/003-account-reference-load.xml`: `account_reference_load`, the provenance ledger of each reference load (`dataset_version`, `schema_version`, `source_id`, `effective_ts`, `publication_ts`, `row_count`, `checksum`, `applied_row_count`, `job_execution_id`).
