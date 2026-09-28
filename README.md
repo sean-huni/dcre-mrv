@@ -60,3 +60,9 @@ MRV reads the MRR-owned spine (`mandate_request_header` / `mandate_request_entry
 - `service/VerdictChainTest`: pure-unit coverage of every chain stage (positive + negative) and the precedence guarantees.
 - `MrvJobIT`: the full job over real CockroachDB (Testcontainers) for every stage end to end, the R-41 rollup modes (ACCEPTED / PARTIAL / FILE_REJECTED, structural override), the derived-status + prior-spine known-ref checks, and the resume/idempotency zero-duplicate audit.
 - `config/AcceptanceModePropertiesTest`: acceptance-mode resolution.
+
+## Related repositories
+
+The complete, current list of live DCRE repositories (stage services, orchestrator, platform libraries, infra and tooling) lives in one place: the [DCRE design register README](https://github.com/sean-huni/dcre-design-register#repositories). Deprecated and archived repositories are deliberately absent from it. This README does not copy that list, so it cannot drift.
+
+- Design register: https://github.com/sean-huni/dcre-design-register (start at `docs/specs/DESIGN-REGISTER.md`; the diagrams in `docs/diagrams/` are the specification)
